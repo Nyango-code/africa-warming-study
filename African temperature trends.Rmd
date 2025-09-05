@@ -1,0 +1,129 @@
+---
+title: "African temperature trends"
+author: "Mary-Joyce Tonye"
+date: "2025-09-02"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Africa is often seen as a monolith when it comes to climate narratives. 
+But what if different regions are warming at different speeds?
+
+I wanted to test a simple hypothesis:  
+**Are Central African countries cooler than Southern African countries?**  
+And more importantly:  
+**Is one region warming faster than the other?**
+
+I expected that Central Africa, home to dense rainforests and equatorial climate would be cooler and possibly warming slower. Let’s find out.
+
+## The Data
+
+I used publicly available monthly temperature data from Berkeley Earth and https://github.com/compgeolab/temperature-data?tab=readme-ov-file, covering both southern and central Africa.
+
+I processed each file to extract annual temperature averages from 1980 onwards, and assigned a region label.
+
+library(tidyverse)
+
+library(lubridate)
+
+library(purrr)
+
+setwd("C:/Users/surface/Downloads/EDA Temperature")
+
+#From the different country data sets, creates a single data frame with Year, Temperature, Date and Country
+
+
+countries_annual<-function(path)  {
+  
+  country_name<-tools::file_path_sans_ext(basename(path))%>%
+    str_replace_all("-", " ")%>%
+    str_to_title()
+  
+  read_csv(path, comment = "#", show_col_types = FALSE) %>%
+    mutate(Date=make_date(year, month, 15),
+           Year=year(Date),
+           Country=country_name) %>%
+    
+    select(Date, Year, temperature_C, Country) %>%
+    rename(temp=temperature_C) %>%
+    group_by(Year, Country) %>%
+    summarise(temp=mean(temp, na.rm=TRUE), .groups ="drop")
+}
+
+#Central Africa
+
+central_files<-list.files("Central Africa", pattern = "*.csv", full.names = TRUE)
+central_africa<-map_df(central_files,countries_annual)%>%
+  filter(Year>=1980)
+central_africa<-central_africa%>%
+  mutate(Region="Central Africa")
+
+#Southern Africa
+
+southern_files<-list.files("Southern Africa", pattern = "*.csv", full.names = TRUE)
+southern_africa<-map_df(southern_files,countries_annual)%>%
+  filter(Year>=1980)
+southern_africa<-southern_africa%>%
+  mutate(Region="Southern Africa")
+  
+#Combines both
+
+all_countries<-bind_rows(central_africa,southern_africa)
+
+
+#Comparative line chart with one panel for each region
+
+ggplot(all_countries, aes(x=Year, y=temp))+
+  geom_line(aes(color=Country))+
+  facet_wrap(~Region)
+  
+What I saw surprised me:
+
+Southern Africa was consistently cooler than Central Africa.
+
+The temperature trends showed a slight but consistent upward slope in both regions.
+
+To compare how fast each region is warming, I calculated the slope using a simple linear regression.
+
+#Warming speed per region
+
+slopes_by_region<-all_countries%>%
+  group_by(Region)%>%
+  summarise(
+    slope=coef(lm(temp~Year))["Year"],
+    .groups = "drop"
+  )
+
+print(slopes_by_region)
+
+## The results showed:
+
+Central Africa warms at a rate of 0.0245°C/year
+Southern Africa warms at 0.0206°C/year
+
+However, the difference was not statistically significant.
+That means: both regions are warming at roughly the same pace, despite their different landscapes and climates.
+
+#Is the difference in warming speeds significant?
+
+model<-lm(temp~Year*Region, data=all_countries)
+summary(model)
+
+## Conclusion
+
+My assumption that Southern Africa is hotter than Central Africa didn't hold. As a matter of fact, it's the opposite.
+
+Central Africa is located around the Equateur which explains the higher average temperatures all year round (24-28°C). 
+
+Southern Africa on the other hand is located closer to the southern hemisphere and is more diverse in terms of climate(desert, temperate areas, coastal areas), which leads to cooler temperatures that spread more.
+
+Both regions heat up at the same pace.
+
+
